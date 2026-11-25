@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useQuery } from '@vue/apollo-composable'
 import gql from 'graphql-tag'
+import { useAbility } from '@casl/vue'
 import RefreshButton from '@/components/RefreshButton.vue'
 
 const DASHBOARD_STATS = gql`
@@ -17,6 +18,9 @@ const DASHBOARD_STATS = gql`
 `
 
 const { result, loading } = useQuery(DASHBOARD_STATS)
+// Recent activity is audit-log data; the API returns it only to roles with AuditLogs read
+const { can } = useAbility()
+const canSeeActivity = computed(() => can('read', 'AuditLogs'))
 const stats = computed(() => result.value?.dashboardStats)
 
 const statCards = computed(() => [
@@ -66,7 +70,7 @@ const auditHeaders = [
     </VRow>
 
     <!-- Recent Activity -->
-    <VCard>
+    <VCard v-if="canSeeActivity">
       <VCardTitle class="pa-4 pb-2">Recent Activity</VCardTitle>
       <VDivider />
       <VDataTable
