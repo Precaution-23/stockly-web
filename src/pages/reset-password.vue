@@ -1,14 +1,10 @@
 <route lang="json">
-{ "meta": { "public": true } }
+{ "meta": { "layout": "blank", "public": true } }
 </route>
 
 <script setup lang="ts">
 import { requiredValidator, minLengthValidator } from '@/@core/utils/validators'
 import { useAuthStore } from '@/store/auth'
-
-defineOptions({
-  layout: 'blank'
-})
 
 const authStore = useAuthStore()
 const route = useRoute()

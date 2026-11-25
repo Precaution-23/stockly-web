@@ -18,7 +18,9 @@ const authLink = setContext((_, { headers }) => {
 })
 
 const errorLink = onError(({ graphQLErrors, networkError }) => {
-  if (graphQLErrors) {
+  // Only an expired/invalid session sends the user to login. Public pages (set/reset password)
+  // have no token, so an auth error there must not redirect.
+  if (graphQLErrors && localStorage.getItem('stockly_token')) {
     for (const err of graphQLErrors) {
       if (
         err.message.includes('Invalid or expired token') ||

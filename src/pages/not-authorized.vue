@@ -1,6 +1,6 @@
-<script setup lang="ts">
-definePageMeta({ layout: 'blank' })
-</script>
+<route lang="json">
+{ "meta": { "layout": "blank" } }
+</route>
 
 <template>
   <div class="d-flex align-center justify-center" style="min-height: 100vh">
