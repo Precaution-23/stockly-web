@@ -25,12 +25,12 @@ router.beforeEach((to, _, next) => {
     return next('/login')
   }
 
-  // Final Approvers only use their approvals list and their account page
-  if (isLoggedIn && !to.meta?.public) {
+  // Final Approvers handle final approvals under Manage, so links to the awaiting tab
+  // (emails, notifications) open there instead, keeping ?id= for the deep link
+  if (isLoggedIn && to.path === '/requests/awaiting') {
     let group: string | undefined
     try { group = JSON.parse(localStorage.getItem('stockly_userData') || 'null')?.group_name } catch { group = undefined }
-    const allowed = to.path === '/account' || to.path.startsWith('/requests/awaiting') || to.path === '/not-authorized'
-    if (group === 'approver' && !allowed) return next({ path: '/requests/awaiting', query: to.path.startsWith('/requests/') ? to.query : {} })
+    if (group === 'approver') return next({ path: '/requests/manage', query: to.query })
   }
 
   next()

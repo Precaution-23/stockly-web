@@ -18,11 +18,7 @@ const userData = computed(() => {
 const groupLabel = computed(() => (userData.value?.group_name === 'approver' ? 'Final Approver' : userData.value?.group_name))
 
 const filteredNavItems = computed(() => {
-  const group = userData.value?.group_name
   return navItems.filter((item: any) => {
-    // Items limited to certain groups; Final Approvers see nothing else
-    if (item.groups) return item.groups.includes(group)
-    if (group === 'approver') return false
     if (item.heading) {
       if (item.action && item.subject) return can(item.action, item.subject)
       return true

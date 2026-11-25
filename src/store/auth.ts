@@ -5,6 +5,7 @@ import ability from '@/plugins/casl/ability'
 import type { UserAbility, Subjects } from '@/plugins/casl/AppAbility'
 import apolloClient from '@/apollo-config'
 import router from '@/plugins/1.router'
+import navItems from '@/navigation/vertical'
 import { useSnackbarStore } from '@/store/snackbar'
 
 provideApolloClient(apolloClient)
@@ -67,6 +68,13 @@ function applyUserSession(res: { token: string; user: any }) {
   localStorage.setItem('stockly_abilities', JSON.stringify(userAbilities))
 }
 
+// After login: the dashboard if the role allows it, otherwise the first menu page it does allow
+function landingPage() {
+  if (ability.can('read', 'Dashboard')) return '/dashboard'
+  const first = (navItems as any[]).find(item => !item.heading && item.to && (!item.action || ability.can(item.action, item.subject)))
+  return first ? router.resolve(first.to).fullPath : '/account'
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     loading: false,
@@ -85,7 +93,7 @@ export const useAuthStore = defineStore('auth', {
         if (!res) return
         applyUserSession(res)
         this.$patch({ loading: false })
-        router.push('/dashboard')
+        router.push(landingPage())
       })
 
       onError((err) => {

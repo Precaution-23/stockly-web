@@ -24,8 +24,8 @@ const userData = computed(() => {
 
 const group = computed(() => userData.value?.group_name)
 const userId = computed(() => String(userData.value?.id ?? ''))
-const canManage = computed(() => ['admin', 'operation', 'finance'].includes(group.value))
-// Final Approvers only see requests awaiting final approval (all of them, not just their own rules)
+// Final Approvers (group "approver") manage too, but the API limits their list to requests awaiting final approval
+const canManage = computed(() => ['admin', 'operation', 'finance', 'approver'].includes(group.value))
 const isApprover = computed(() => group.value === 'approver')
 
 // ─── GQL ───────────────────────────────────────────────────────────────
@@ -94,13 +94,15 @@ const allTotal = computed(() => allResult.value?.requestsPage?.total ?? 0)
 const manageStatusCounts = computed<{ status: string; count: number }[]>(() => allResult.value?.requestsPage?.statusCounts ?? [])
 
 // ─── My Requests tab ───────────────────────────────────────────────────
-const { result: myResult, loading: myLoading, refetch: refetchMine } = useQuery(MY_REQUESTS_QUERY, {}, () => ({ enabled: !isApprover.value }))
+const { result: myResult, loading: myLoading, refetch: refetchMine } = useQuery(MY_REQUESTS_QUERY)
 const myRequests = computed(() => myResult.value?.myRequests ?? [])
 
 // ─── Awaiting My Approval tab (final approver) ─────────────────────────
 const { result: awaitingResult, loading: awaitingLoading, refetch: refetchAwaiting } = useQuery(AWAITING_QUERY)
 const awaitingRequests = computed(() => awaitingResult.value?.requestsAwaitingMyApproval ?? [])
-const showAwaitingTab = computed(() => isApprover.value || awaitingRequests.value.length > 0 || activeTab.value === 'awaiting')
+// Final Approvers already see every awaiting request under Manage, so they don't get this tab
+const showAwaitingTab = computed(() => !isApprover.value && (awaitingRequests.value.length > 0 || activeTab.value === 'awaiting'))
+
 
 // ─── Form data ─────────────────────────────────────────────────────────
 const { result: itemsResult } = useQuery(ITEMS_QUERY)
@@ -403,13 +405,21 @@ const myHeaders = [
   { title: '', key: 'actions', sortable: false },
 ]
 
-const awaitingHeaders = computed(() => [
+const awaitingHeaders = [
   ...manageHeaders.filter(h => h.key !== 'status' && h.key !== 'actions'),
   { title: 'Finance Approval By', key: 'approver', sortable: false },
-  // Final Approvers see every awaiting request, so show who the approval rule assigned
-  ...(isApprover.value ? [{ title: 'Assigned To', key: 'finalApprover', sortable: false }] : []),
   { title: 'Actions', key: 'actions', sortable: false }
-])
+]
+
+// Final Approvers' Manage list is all awaiting final approval: show who approved at finance and who the rule assigned
+const manageTableHeaders = computed(() => (isApprover.value
+  ? [
+      ...manageHeaders.filter(h => h.key !== 'actions'),
+      { title: 'Finance Approval By', key: 'approver', sortable: false },
+      { title: 'Assigned To', key: 'finalApprover', sortable: false },
+      { title: 'Actions', key: 'actions', sortable: false },
+    ]
+  : manageHeaders))
 </script>
 
 <template>
@@ -424,10 +434,10 @@ const awaitingHeaders = computed(() => [
     <VTabs v-model="activeTab" class="mb-4">
       <VTab v-if="canManage" value="manage">Manage</VTab>
       <VTab v-if="showAwaitingTab" value="awaiting">
-        {{ isApprover ? 'Final Approvals' : 'Awaiting My Approval' }}
+        Awaiting My Approval
         <VChip v-if="awaitingRequests.length" size="x-small" color="deep-purple" class="ms-2">{{ awaitingRequests.length }}</VChip>
       </VTab>
-      <VTab v-if="!isApprover" value="mine">My Requests</VTab>
+      <VTab value="mine">My Requests</VTab>
     </VTabs>
 
     <VWindow v-model="activeTab">
@@ -467,7 +477,7 @@ const awaitingHeaders = computed(() => [
             v-model:page="managePage"
             v-model:items-per-page="manageItemsPerPage"
             v-model:sort-by="manageSortBy"
-            :headers="manageHeaders"
+            :headers="manageTableHeaders"
             :items="allRequests"
             :items-length="allTotal"
             :loading="allLoading"
@@ -497,6 +507,12 @@ const awaitingHeaders = computed(() => [
             <template #item.creator="{ item }">
               {{ item.creator ? `${item.creator.first_name} ${item.creator.last_name}` : '—' }}
             </template>
+            <template #item.approver="{ item }">
+              {{ item.approver ? `${item.approver.first_name} ${item.approver.last_name}` : '—' }}
+            </template>
+            <template #item.finalApprover="{ item }">
+              {{ item.finalApprover ? `${item.finalApprover.first_name} ${item.finalApprover.last_name}` : '—' }}
+            </template>
             <template #item.actions="{ item }">
               <div class="d-flex ga-1" @click.stop>
                 <VBtn
@@ -518,9 +534,7 @@ const awaitingHeaders = computed(() => [
       <!-- AWAITING MY APPROVAL TAB -->
       <VWindowItem value="awaiting">
         <VAlert type="info" variant="tonal" density="compact" class="mb-3">
-          {{ isApprover
-            ? 'These requests have been approved by finance and, based on their amount, need a final approval. Any Final Approver can approve or reject them.'
-            : 'These requests have been approved by finance and, based on their amount, need your final approval.' }}
+          These requests have been approved by finance and, based on their amount, need your final approval.
         </VAlert>
         <VCard>
           <VDataTable
@@ -550,9 +564,7 @@ const awaitingHeaders = computed(() => [
             <template #item.approver="{ item }">
               {{ item.approver ? `${item.approver.first_name} ${item.approver.last_name}` : '—' }}
             </template>
-            <template #item.finalApprover="{ item }">
-              {{ item.finalApprover ? `${item.finalApprover.first_name} ${item.finalApprover.last_name}` : '—' }}
-            </template>
+
             <template #item.actions="{ item }">
               <div class="d-flex ga-1" @click.stop>
                 <VBtn
