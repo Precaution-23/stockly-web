@@ -6,6 +6,8 @@ import RolesTable from '@/components/roles/RolesTable.vue'
 import RefreshButton from '@/components/RefreshButton.vue'
 import AppDialog from '@/components/dialogs/AppDialog.vue'
 import ConfirmDialog from '@/components/dialogs/ConfirmDialog.vue'
+import PasswordRequirements from '@/components/PasswordRequirements.vue'
+import { strongPasswordValidator } from '@/@core/utils/passwordPolicy'
 
 const route = useRoute()
 const router = useRouter()
@@ -263,6 +265,7 @@ async function savePermissions() {
         :title="userForm.id ? 'Edit User' : 'Add User'"
         :width="560"
         :loading="savingUser"
+        :can-submit="strongPasswordValidator(() => userForm.email)(userForm.password) === true"
         @confirm="saveUser"
       >
         <VRow>
@@ -281,12 +284,13 @@ async function savePermissions() {
               :label="userForm.id ? 'New Password (optional)' : 'Password (optional)'"
               type="password"
               autocomplete="new-password"
-              :rules="[(v: string) => !v || v.length >= 8 || 'At least 8 characters']"
+              :rules="[strongPasswordValidator(() => userForm.email)]"
               :hint="userForm.id
                 ? 'Leave blank to keep the current password.'
                 : 'Leave blank and the user will get an email with a link to choose their own password.'"
               persistent-hint
             />
+            <PasswordRequirements v-if="userForm.password" :password="userForm.password" />
           </VCol>
           <VCol cols="12" sm="6">
             <VSelect v-model="userForm.group_name" :items="groupOptions" label="Group" />

@@ -19,6 +19,7 @@ declare module 'vue' {
     ItemsTable: typeof import('./components/configurations/ItemsTable.vue')['default']
     LocationsTable: typeof import('./components/configurations/LocationsTable.vue')['default']
     NotificationBell: typeof import('./components/NotificationBell.vue')['default']
+    PasswordRequirements: typeof import('./components/PasswordRequirements.vue')['default']
     RefreshButton: typeof import('./components/RefreshButton.vue')['default']
     RolesTable: typeof import('./components/roles/RolesTable.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

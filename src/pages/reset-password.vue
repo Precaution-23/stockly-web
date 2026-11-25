@@ -3,7 +3,9 @@
 </route>
 
 <script setup lang="ts">
-import { requiredValidator, minLengthValidator } from '@/@core/utils/validators'
+import { requiredValidator } from '@/@core/utils/validators'
+import { strongPasswordValidator } from '@/@core/utils/passwordPolicy'
+import PasswordRequirements from '@/components/PasswordRequirements.vue'
 import { useAuthStore } from '@/store/auth'
 
 const authStore = useAuthStore()
@@ -64,11 +66,12 @@ const handleReset = async () => {
               v-model="newPassword"
               :type="showPassword ? 'text' : 'password'"
               placeholder="••••••••"
-              :rules="[requiredValidator, minLengthValidator(8)]"
+              :rules="[requiredValidator, strongPasswordValidator()]"
               prepend-inner-icon="mdi-lock-outline"
               :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
               @click:append-inner="showPassword = !showPassword"
             />
+            <PasswordRequirements :password="newPassword" />
           </div>
 
           <div class="mb-6">
