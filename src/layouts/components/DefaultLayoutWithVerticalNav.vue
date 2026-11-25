@@ -3,6 +3,7 @@ import navItems from '@/navigation/vertical'
 import { useAuthStore } from '@/store/auth'
 import { useAbility } from '@casl/vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import { useSnackbarStore } from '@/store/snackbar'
 
 const authStore = useAuthStore()
 const { can } = useAbility()
@@ -28,6 +29,38 @@ const filteredNavItems = computed(() => {
 const handleLogout = () => {
   authStore.logout()
 }
+
+// ─── Session expiry: warn 10 minutes before the login token runs out, then sign out ───
+const snackbar = useSnackbarStore()
+const sessionEndingSoon = ref(false)
+const timers: ReturnType<typeof setTimeout>[] = []
+
+const tokenExpiry = (): number | null => {
+  try {
+    const token = localStorage.getItem('stockly_token')
+    const payload = token ? JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) : null
+    return payload?.exp ? payload.exp * 1000 : null
+  }
+  catch {
+    return null
+  }
+}
+
+onMounted(() => {
+  const exp = tokenExpiry()
+  if (!exp) return
+  const msLeft = exp - Date.now()
+  const WARN_BEFORE = 10 * 60 * 1000
+  // setTimeout can't wait longer than ~24.8 days (dev tokens last a year), so skip those
+  if (msLeft > 2 ** 31 - 1) return
+  timers.push(setTimeout(() => { sessionEndingSoon.value = true }, Math.max(msLeft - WARN_BEFORE, 0)))
+  timers.push(setTimeout(() => {
+    sessionEndingSoon.value = false
+    snackbar.error('Your session has ended. Please log in again.')
+    authStore.logout()
+  }, Math.max(msLeft, 0)))
+})
+onBeforeUnmount(() => timers.forEach(clearTimeout))
 </script>
 
 <template>
@@ -72,6 +105,13 @@ const handleLogout = () => {
       <template #append>
         <VDivider />
         <VList density="compact" nav class="py-2">
+          <VListItem
+            to="/account"
+            prepend-icon="mdi-account-cog-outline"
+            title="My Account"
+            rounded="lg"
+            active-color="primary"
+          />
           <VListItem
             prepend-icon="mdi-logout"
             title="Logout"
@@ -121,6 +161,15 @@ const handleLogout = () => {
         </VBtn>
       </template>
     </VAppBar>
+
+    <!-- Session about to expire -->
+    <VSnackbar v-model="sessionEndingSoon" :timeout="-1" color="warning" location="top">
+      Your session ends in less than 10 minutes. Save your work, then log in again to continue.
+      <template #actions>
+        <VBtn variant="text" @click="handleLogout">Log in again</VBtn>
+        <VBtn variant="text" @click="sessionEndingSoon = false">Dismiss</VBtn>
+      </template>
+    </VSnackbar>
 
     <!-- Main content -->
     <VMain>

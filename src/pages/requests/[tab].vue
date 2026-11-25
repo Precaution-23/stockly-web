@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { useQuery, useMutation } from '@vue/apollo-composable'
+import { useQuery, useMutation, useApolloClient } from '@vue/apollo-composable'
 import gql from 'graphql-tag'
 import { useAbility } from '@casl/vue'
 import { useSnackbarStore } from '@/store/snackbar'
-import { API_BASE } from '@/apollo-config/apiBase'
-import { uploadFile } from '@/apollo-config/upload'
+import { uploadFile, openUpload } from '@/apollo-config/upload'
 import RefreshButton from '@/components/RefreshButton.vue'
 import AppDialog from '@/components/dialogs/AppDialog.vue'
+import ConfirmDialog from '@/components/dialogs/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +23,7 @@ const userData = computed(() => {
 })
 
 const group = computed(() => userData.value?.group_name)
+const userId = computed(() => String(userData.value?.id ?? ''))
 const canManage = computed(() => ['admin', 'operation', 'finance'].includes(group.value))
 
 // ─── GQL ───────────────────────────────────────────────────────────────
@@ -40,7 +41,12 @@ const REQUEST_FIELDS = `
   final_approved_by finalApprovedBy { id first_name last_name email }
 `
 
-const REQUESTS_QUERY = gql`query requests($payload: RequestsQueryInput) { requests(payload: $payload) { ${REQUEST_FIELDS} } }`
+// Manage tab is paged on the server (all church requests); the other tabs are small per-user lists
+const REQUESTS_PAGE_QUERY = gql`query requestsPage($payload: RequestsPageInput) {
+  requestsPage(payload: $payload) { total statusCounts { status count } rows { ${REQUEST_FIELDS} } }
+}`
+const REQUEST_QUERY = gql`query request($id: ID!) { request(id: $id) { ${REQUEST_FIELDS} } }`
+const DELETE_REQUEST_MUTATION = gql`mutation deleteRequest($id: ID!) { deleteRequest(id: $id) }`
 const MY_REQUESTS_QUERY = gql`query myRequests { myRequests { ${REQUEST_FIELDS} } }`
 const AWAITING_QUERY = gql`query requestsAwaitingMyApproval { requestsAwaitingMyApproval { ${REQUEST_FIELDS} } }`
 const ITEMS_QUERY = gql`query items { items(payload: { approved: true }) { id name } }`
@@ -55,8 +61,35 @@ const PURCHASE_MUTATION = gql`mutation markPurchased($id: ID!, $invoice: String!
 const CREATE_REQUEST_MUTATION = gql`mutation createRequest($payload: CreateRequestInput!) { createRequest(payload: $payload) { ${REQUEST_FIELDS} } }`
 
 // ─── Manage tab ────────────────────────────────────────────────────────
-const { result: allResult, loading: allLoading, refetch: refetchAll } = useQuery(REQUESTS_QUERY, {}, { enabled: canManage.value })
-const allRequests = computed(() => allResult.value?.requests ?? [])
+const managePage = ref(1)
+const manageItemsPerPage = ref(25)
+const manageSortBy = ref<{ key: string; order?: 'asc' | 'desc' | boolean }[]>([])
+const manageSearch = ref('')
+const manageQuery = ref('')
+let manageSearchTimer: ReturnType<typeof setTimeout> | undefined
+watch(manageSearch, (v) => {
+  clearTimeout(manageSearchTimer)
+  manageSearchTimer = setTimeout(() => { manageQuery.value = v; managePage.value = 1 }, 300)
+})
+const manageStatus = ref('all')
+watch(manageStatus, () => { managePage.value = 1 })
+
+const manageVariables = computed(() => ({
+  payload: {
+    q: manageQuery.value || null,
+    status: manageStatus.value === 'all' ? null : manageStatus.value,
+    limit: manageItemsPerPage.value,
+    offset: (managePage.value - 1) * manageItemsPerPage.value,
+    sortBy: manageSortBy.value[0]?.key ?? null,
+    sortDesc: manageSortBy.value[0]?.order === 'desc',
+  },
+}))
+const { result: allResult, loading: allLoading, refetch: refetchAll } = useQuery(
+  REQUESTS_PAGE_QUERY, manageVariables, () => ({ enabled: canManage.value, fetchPolicy: 'cache-and-network' }),
+)
+const allRequests = computed(() => allResult.value?.requestsPage?.rows ?? [])
+const allTotal = computed(() => allResult.value?.requestsPage?.total ?? 0)
+const manageStatusCounts = computed<{ status: string; count: number }[]>(() => allResult.value?.requestsPage?.statusCounts ?? [])
 
 // ─── My Requests tab ───────────────────────────────────────────────────
 const { result: myResult, loading: myLoading, refetch: refetchMine } = useQuery(MY_REQUESTS_QUERY)
@@ -88,6 +121,7 @@ const { mutate: approveMutate } = useMutation(APPROVE_MUTATION)
 const { mutate: rejectMutate } = useMutation(REJECT_MUTATION)
 const { mutate: purchaseMutate, loading: purchasing } = useMutation(PURCHASE_MUTATION)
 const { mutate: createMutate, loading: creating } = useMutation(CREATE_REQUEST_MUTATION)
+const { mutate: deleteMutate, loading: cancelling } = useMutation(DELETE_REQUEST_MUTATION)
 
 const actionLoading = ref<string | null>(null)
 const snackbar = useSnackbarStore()
@@ -109,6 +143,7 @@ const doAction = async (action: string, id: string, extra?: any) => {
       await rejectMutate({ payload: { id, rejection_note: extra } })
       snackbar.success('Request rejected')
     }
+    detailDrawer.value = false
     refetchAll()
     refetchMine()
     refetchAwaiting()
@@ -125,6 +160,52 @@ const rejectNote = ref('')
 const rejectTargetId = ref('')
 const openRejectDialog = (id: string) => { rejectTargetId.value = id; rejectNote.value = ''; rejectDialog.value = true }
 const confirmReject = async () => { rejectDialog.value = false; await doAction('reject', rejectTargetId.value, rejectNote.value) }
+
+// ─── Cancel my pending request ──────────────────────────────────────────
+const cancelDialog = ref(false)
+const cancelTarget = ref<any>(null)
+const openCancelDialog = (req: any) => { cancelTarget.value = req; cancelDialog.value = true }
+const confirmCancel = async () => {
+  if (!cancelTarget.value) return
+  try {
+    await deleteMutate({ id: cancelTarget.value.id })
+    cancelDialog.value = false
+    detailDrawer.value = false
+    snackbar.success('Request cancelled')
+    refetchMine()
+    refetchAll()
+  } catch (e: any) {
+    snackbar.error(e)
+  }
+}
+const canCancel = (req: any) => req?.status === 'pending' && String(req?.creator?.id) === userId.value
+
+// ─── Which workflow actions the current user may take on a request ─────
+// Mirrors the API rules: nobody except admins may act on their own request
+const isOwn = (req: any) => String(req?.creator?.id) === userId.value
+const isOpen = (req: any) => ['pending', 'forwarded', 'awaiting_final_approval', 'approved'].includes(req?.status)
+const actionsFor = (req: any): ('forward' | 'approve' | 'reject' | 'purchase')[] => {
+  if (!req || (isOwn(req) && group.value !== 'admin')) return []
+  const g = group.value
+  const isFinalApprover = String(req.final_approver_id) === userId.value
+  const actions: ('forward' | 'approve' | 'reject' | 'purchase')[] = []
+  if (req.status === 'pending' && ['admin', 'operation'].includes(g)) actions.push('forward', 'reject')
+  if (req.status === 'forwarded' && ['admin', 'finance'].includes(g)) actions.push('approve', 'reject')
+  if (req.status === 'awaiting_final_approval' && (g === 'admin' || isFinalApprover)) actions.push('approve', 'reject')
+  if (req.status === 'approved' && ['admin', 'operation', 'finance'].includes(g)) actions.push('purchase')
+  return actions
+}
+const ACTION_META = {
+  forward: { label: 'Forward', color: 'info' },
+  approve: { label: 'Approve', color: 'success' },
+  reject: { label: 'Reject', color: 'error' },
+  purchase: { label: 'Purchase', color: 'primary' },
+} as const
+const runAction = (action: keyof typeof ACTION_META, req: any) => {
+  if (action === 'reject') return openRejectDialog(req.id)
+  if (action === 'purchase') { detailDrawer.value = false; return openPurchaseDialog(req) }
+  return doAction(action, req.id)
+}
 
 // ─── New Request form ───────────────────────────────────────────────────
 const requestDialog = ref(false)
@@ -245,6 +326,26 @@ const detailDrawer = ref(false)
 const selectedRequest = ref<any>(null)
 const openDetail = (req: any) => { selectedRequest.value = req; detailDrawer.value = true }
 
+const snackbarError = (e: unknown) => snackbar.error(e)
+const viewFile = (path: string) => openUpload(path).catch(snackbarError)
+
+// Deep links from emails/notifications: /requests/<tab>?id=<id> opens that request's details
+const apollo = useApolloClient()
+const openFromLink = async (id: string | undefined) => {
+  if (!id) return
+  // Drop ?id first so refreshing doesn't reopen it (and because a route change closes the drawer)
+  const { id: _drop, ...rest } = route.query
+  await router.replace({ query: rest })
+  const known = [...allRequests.value, ...myRequests.value, ...awaitingRequests.value].find((r: any) => String(r.id) === id)
+  try {
+    const req = known ?? (await apollo.resolveClient().query({ query: REQUEST_QUERY, variables: { id }, fetchPolicy: 'network-only' })).data?.request
+    if (req) openDetail(req)
+  } catch (e: any) {
+    snackbar.error(e, 'That request could not be opened')
+  }
+}
+watch(() => route.query.id as string | undefined, openFromLink, { immediate: true })
+
 // ─── Tables ─────────────────────────────────────────────────────────────
 const manageHeaders = [
   { title: 'Item', key: 'item_name' },
@@ -267,26 +368,25 @@ const statusLabel = (status: string) => status === 'awaiting_final_approval' ? '
 
 // ─── Status filters (client-side; each tab already has its full list) ───
 const STATUSES = ['pending', 'forwarded', 'awaiting_final_approval', 'approved', 'rejected', 'purchased']
-const manageStatus = ref('all')
 const myStatus = ref('all')
 
 const byStatus = (list: any[], status: string) => (status === 'all' ? list : list.filter((r: any) => r.status === status))
-const filteredAllRequests = computed(() => byStatus(allRequests.value, manageStatus.value))
 const filteredMyRequests = computed(() => byStatus(myRequests.value, myStatus.value))
 
 // Options with counts; statuses with no requests are hidden unless currently selected
-const statusOptions = (list: any[], selected: string) => [
-  { title: `All statuses (${list.length})`, value: 'all' },
+const statusOptions = (counts: { status: string; count: number }[], selected: string) => [
+  { title: `All statuses (${counts.reduce((n, c) => n + c.count, 0)})`, value: 'all' },
   ...STATUSES
-    .map(s => ({ status: s, count: list.filter((r: any) => r.status === s).length }))
+    .map(s => ({ status: s, count: counts.find(c => c.status === s)?.count ?? 0 }))
     .filter(o => o.count > 0 || o.status === selected)
     .map(o => {
       const label = statusLabel(o.status)
       return { title: `${label.charAt(0).toUpperCase()}${label.slice(1)} (${o.count})`, value: o.status }
     }),
 ]
-const manageStatusOptions = computed(() => statusOptions(allRequests.value, manageStatus.value))
-const myStatusOptions = computed(() => statusOptions(myRequests.value, myStatus.value))
+const countByStatus = (list: any[]) => STATUSES.map(status => ({ status, count: list.filter((r: any) => r.status === status).length }))
+const manageStatusOptions = computed(() => statusOptions(manageStatusCounts.value, manageStatus.value))
+const myStatusOptions = computed(() => statusOptions(countByStatus(myRequests.value), myStatus.value))
 
 // Attached documents: up to 3 quotations (at creation) + the purchase invoice (at Mark Purchased)
 const quotationCount = (r: any) => [r.invoice_1, r.invoice_2, r.invoice_3].filter(Boolean).length
@@ -295,6 +395,11 @@ const fileTooltip = (r: any) => {
   const q = quotationCount(r)
   return [q ? `${q} quotation${q > 1 ? 's' : ''}` : '', r.purchase_invoice ? 'purchase invoice' : ''].filter(Boolean).join(' · ')
 }
+
+const myHeaders = [
+  ...manageHeaders.filter(h => h.key !== 'actions' && h.key !== 'creator'),
+  { title: '', key: 'actions', sortable: false },
+]
 
 const awaitingHeaders = [
   ...manageHeaders.filter(h => h.key !== 'status' && h.key !== 'actions'),
@@ -324,7 +429,15 @@ const awaitingHeaders = [
     <VWindow v-model="activeTab">
       <!-- MANAGE TAB -->
       <VWindowItem value="manage">
-        <div class="d-flex align-center ga-4 mb-3">
+        <div class="d-flex align-center flex-wrap ga-4 mb-3">
+          <VTextField
+            v-model="manageSearch"
+            placeholder="Search item..."
+            prepend-inner-icon="mdi-magnify"
+            clearable
+            hide-details
+            style="max-width: 260px"
+          />
           <VSelect
             v-model="manageStatus"
             :items="manageStatusOptions"
@@ -346,12 +459,16 @@ const awaitingHeaders = [
           </VSelect>
         </div>
         <VCard>
-          <VDataTable
+          <VDataTableServer
+            v-model:page="managePage"
+            v-model:items-per-page="manageItemsPerPage"
+            v-model:sort-by="manageSortBy"
             :headers="manageHeaders"
-            :items="filteredAllRequests"
+            :items="allRequests"
+            :items-length="allTotal"
             :loading="allLoading"
             class="text-no-wrap"
-            @click:row="(_, { item }) => openDetail(item)"
+            @click:row="(_: any, { item }: any) => openDetail(item)"
           >
             <template #item.unit_price="{ item }">GHS {{ Number(item.unit_price).toFixed(2) }}</template>
             <template #item.total_price="{ item }">GHS {{ Number(item.total_price).toFixed(2) }}</template>
@@ -368,7 +485,7 @@ const awaitingHeaders = [
             </template>
             <template #item.needed_by_date="{ item }">{{ item.needed_by_date ? new Date(item.needed_by_date).toLocaleDateString() : '—' }}</template>
             <template #no-data>
-              <div class="pa-4 text-medium-emphasis">{{ manageStatus !== 'all' ? 'No requests with this status' : 'No requests yet' }}</div>
+              <div class="pa-4 text-medium-emphasis">{{ manageQuery ? 'Nothing matches your search' : manageStatus !== 'all' ? 'No requests with this status' : 'No requests yet' }}</div>
             </template>
             <template #item.status="{ item }">
               <VChip :color="statusColor(item.status)" size="small" variant="tonal" class="text-capitalize">{{ statusLabel(item.status) }}</VChip>
@@ -378,38 +495,19 @@ const awaitingHeaders = [
             </template>
             <template #item.actions="{ item }">
               <div class="d-flex ga-1" @click.stop>
-                <!-- Operation: Forward pending -->
                 <VBtn
-                  v-if="item.status === 'pending' && ['admin', 'operation'].includes(group)"
-                  size="x-small" color="info" variant="tonal"
-                  :loading="actionLoading === `forward-${item.id}`"
-                  @click="doAction('forward', item.id)"
-                >Forward</VBtn>
-
-                <!-- Finance: Approve forwarded -->
-                <VBtn
-                  v-if="(item.status === 'forwarded' && ['admin', 'finance'].includes(group)) || (item.status === 'awaiting_final_approval' && group === 'admin')"
-                  size="x-small" color="success" variant="tonal"
-                  :loading="actionLoading === `approve-${item.id}`"
-                  @click="doAction('approve', item.id)"
-                >Approve</VBtn>
-
-                <!-- Reject: operation (pending), finance (forwarded), admin (also awaiting final approval) -->
-                <VBtn
-                  v-if="(item.status === 'pending' && ['admin', 'operation'].includes(group)) || (item.status === 'forwarded' && ['admin', 'finance'].includes(group)) || (item.status === 'awaiting_final_approval' && group === 'admin')"
-                  size="x-small" color="error" variant="tonal"
-                  @click="openRejectDialog(item.id)"
-                >Reject</VBtn>
-
-                <!-- Mark Purchased: approved -->
-                <VBtn
-                  v-if="item.status === 'approved' && ['admin', 'operation', 'finance'].includes(group)"
-                  size="x-small" color="primary" variant="tonal"
-                  @click="openPurchaseDialog(item)"
-                >Purchase</VBtn>
+                  v-for="action in actionsFor(item)"
+                  :key="action"
+                  size="x-small"
+                  variant="tonal"
+                  :color="ACTION_META[action].color"
+                  :loading="actionLoading === `${action}-${item.id}`"
+                  @click="runAction(action, item)"
+                >{{ ACTION_META[action].label }}</VBtn>
+                <span v-if="isOwn(item) && group !== 'admin' && isOpen(item)" class="text-caption text-medium-emphasis">Your request</span>
               </div>
             </template>
-          </VDataTable>
+          </VDataTableServer>
         </VCard>
       </VWindowItem>
 
@@ -449,11 +547,15 @@ const awaitingHeaders = [
             <template #item.actions="{ item }">
               <div class="d-flex ga-1" @click.stop>
                 <VBtn
-                  size="x-small" color="success" variant="tonal"
-                  :loading="actionLoading === `approve-${item.id}`"
-                  @click="doAction('approve', item.id)"
-                >Approve</VBtn>
-                <VBtn size="x-small" color="error" variant="tonal" @click="openRejectDialog(item.id)">Reject</VBtn>
+                  v-for="action in actionsFor(item)"
+                  :key="action"
+                  size="x-small"
+                  variant="tonal"
+                  :color="ACTION_META[action].color"
+                  :loading="actionLoading === `${action}-${item.id}`"
+                  @click="runAction(action, item)"
+                >{{ ACTION_META[action].label }}</VBtn>
+                <span v-if="!actionsFor(item).length" class="text-caption text-medium-emphasis">Your request</span>
               </div>
             </template>
             <template #no-data>
@@ -489,7 +591,7 @@ const awaitingHeaders = [
         </div>
         <VCard>
           <VDataTable
-            :headers="manageHeaders.filter(h => h.key !== 'actions' && h.key !== 'creator')"
+            :headers="myHeaders"
             :items="filteredMyRequests"
             :loading="myLoading"
             class="text-no-wrap"
@@ -515,10 +617,27 @@ const awaitingHeaders = [
             <template #item.status="{ item }">
               <VChip :color="statusColor(item.status)" size="small" variant="tonal" class="text-capitalize">{{ statusLabel(item.status) }}</VChip>
             </template>
+            <template #item.actions="{ item }">
+              <div @click.stop>
+                <VBtn v-if="canCancel(item)" size="x-small" color="error" variant="text" @click="openCancelDialog(item)">Cancel</VBtn>
+              </div>
+            </template>
           </VDataTable>
         </VCard>
       </VWindowItem>
     </VWindow>
+
+    <!-- Cancel Request Dialog -->
+    <ConfirmDialog
+      v-model="cancelDialog"
+      title="Cancel Request"
+      :question="cancelTarget ? `Cancel your request for ${cancelTarget.item_name}?` : 'Cancel this request?'"
+      confirm-text="Cancel request"
+      :loading="cancelling"
+      @confirm="confirmCancel"
+    >
+      <p class="text-body-2 text-medium-emphasis mt-2">Reviewers will no longer see it. This can't be undone.</p>
+    </ConfirmDialog>
 
     <!-- Mark as Purchased Dialog -->
     <AppDialog
@@ -697,18 +816,41 @@ const awaitingHeaders = [
           <!-- Purchase invoice -->
           <div v-if="selectedRequest.purchase_invoice" class="mt-4">
             <p class="text-body-2 font-weight-medium mb-2">Purchase Invoice</p>
-            <VBtn variant="tonal" size="small" color="primary" prepend-icon="mdi-receipt-text-outline" :href="`${API_BASE}/${selectedRequest.purchase_invoice}`" target="_blank">View invoice</VBtn>
+            <VBtn variant="tonal" size="small" color="primary" prepend-icon="mdi-receipt-text-outline" @click="viewFile(selectedRequest.purchase_invoice)">View invoice</VBtn>
           </div>
 
           <!-- Quotations -->
           <div v-if="selectedRequest.invoice_1 || selectedRequest.invoice_2 || selectedRequest.invoice_3" class="mt-4">
             <p class="text-body-2 font-weight-medium mb-2">Quotations</p>
             <div class="d-flex flex-column ga-2">
-              <VBtn v-if="selectedRequest.invoice_1" variant="tonal" size="small" prepend-icon="mdi-file-document" :href="`${API_BASE}/${selectedRequest.invoice_1}`" target="_blank">Quotation 1</VBtn>
-              <VBtn v-if="selectedRequest.invoice_2" variant="tonal" size="small" prepend-icon="mdi-file-document" :href="`${API_BASE}/${selectedRequest.invoice_2}`" target="_blank">Quotation 2</VBtn>
-              <VBtn v-if="selectedRequest.invoice_3" variant="tonal" size="small" prepend-icon="mdi-file-document" :href="`${API_BASE}/${selectedRequest.invoice_3}`" target="_blank">Quotation 3</VBtn>
+              <VBtn v-if="selectedRequest.invoice_1" variant="tonal" size="small" prepend-icon="mdi-file-document" @click="viewFile(selectedRequest.invoice_1)">Quotation 1</VBtn>
+              <VBtn v-if="selectedRequest.invoice_2" variant="tonal" size="small" prepend-icon="mdi-file-document" @click="viewFile(selectedRequest.invoice_2)">Quotation 2</VBtn>
+              <VBtn v-if="selectedRequest.invoice_3" variant="tonal" size="small" prepend-icon="mdi-file-document" @click="viewFile(selectedRequest.invoice_3)">Quotation 3</VBtn>
             </div>
           </div>
+
+          <!-- Actions (so a deep link from an email can be acted on straight away) -->
+          <div v-if="actionsFor(selectedRequest).length || canCancel(selectedRequest)" class="mt-6">
+            <VDivider class="mb-4" />
+            <div class="d-flex flex-wrap ga-2">
+              <VBtn
+                v-for="action in actionsFor(selectedRequest)"
+                :key="action"
+                size="small"
+                variant="tonal"
+                :color="ACTION_META[action].color"
+                :loading="actionLoading === `${action}-${selectedRequest.id}`"
+                @click="runAction(action, selectedRequest)"
+              >{{ ACTION_META[action].label }}</VBtn>
+              <VBtn v-if="canCancel(selectedRequest)" size="small" variant="tonal" color="error" @click="openCancelDialog(selectedRequest)">Cancel request</VBtn>
+            </div>
+          </div>
+          <VAlert
+            v-else-if="isOwn(selectedRequest) && group !== 'admin' && isOpen(selectedRequest) && canManage"
+            type="info" variant="tonal" density="compact" class="mt-6"
+          >
+            You can't review your own request. Another reviewer will handle it.
+          </VAlert>
         </VCardText>
       </VCard>
     </VNavigationDrawer>
