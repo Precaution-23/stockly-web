@@ -106,7 +106,7 @@ async function saveUser() {
     if (!payload.password) delete payload.password
     if (!payload.role_id) delete payload.role_id
     await createUser({ payload })
-    snackbar.show(userForm.value.id ? 'User updated' : 'User created', 'success')
+    snackbar.show(userForm.value.id ? 'User updated' : `User created. A welcome email was sent to ${payload.email}`, 'success')
     userDialog.value = false
     refetchUsers()
   } catch (e: any) {
@@ -278,8 +278,14 @@ async function savePermissions() {
           <VCol cols="12">
             <VTextField
               v-model="userForm.password"
-              :label="userForm.id ? 'New Password (leave blank to keep)' : 'Password'"
+              :label="userForm.id ? 'New Password (optional)' : 'Password (optional)'"
               type="password"
+              autocomplete="new-password"
+              :rules="[(v: string) => !v || v.length >= 8 || 'At least 8 characters']"
+              :hint="userForm.id
+                ? 'Leave blank to keep the current password.'
+                : 'Leave blank and the user will get an email with a link to choose their own password.'"
+              persistent-hint
             />
           </VCol>
           <VCol cols="12" sm="6">

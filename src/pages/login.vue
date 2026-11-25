@@ -76,10 +76,7 @@ const handleLogin = async () => {
         </VForm>
 
         <div class="text-center mt-4">
-          <span class="text-body-2 text-medium-emphasis">Don't have an account? </span>
-          <RouterLink to="/signup" class="text-body-2 text-primary text-decoration-none font-weight-medium">
-            Sign up
-          </RouterLink>
+          <span class="text-body-2 text-medium-emphasis">Need an account? Ask an administrator to create one for you.</span>
         </div>
       </VCard>
     </VMain>

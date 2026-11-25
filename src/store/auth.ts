@@ -22,19 +22,6 @@ const LOGIN_MUTATION = gql`
   }
 `
 
-const SIGNUP_MUTATION = gql`
-  mutation signup($payload: SignupInput!) {
-    signup(payload: $payload) {
-      token
-      user {
-        id first_name last_name email group_name is_active
-        role { id name description }
-        permissions { id resource create read update delete }
-      }
-    }
-  }
-`
-
 const REQUEST_PASSWORD_RESET_MUTATION = gql`
   mutation requestPasswordReset($payload: RequestPasswordResetInput!) {
     requestPasswordReset(payload: $payload) {
@@ -106,33 +93,6 @@ export const useAuthStore = defineStore('auth', {
       })
 
       await mutate({ payload: { email, password } })
-    },
-
-    async signup(payload: {
-      first_name: string
-      last_name: string
-      email: string
-      password: string
-      group_name?: string
-      role_id?: string
-    }) {
-      this.$patch({ loading: true, error: '' })
-
-      const { mutate, onDone, onError } = useMutation(SIGNUP_MUTATION)
-
-      onDone((result) => {
-        const res = result.data?.signup
-        if (!res) return
-        applyUserSession(res)
-        this.$patch({ loading: false })
-        router.push('/dashboard')
-      })
-
-      onError((err) => {
-        this.$patch({ loading: false, error: err.message || 'Signup failed' })
-      })
-
-      await mutate({ payload })
     },
 
     async requestPasswordReset(email: string) {

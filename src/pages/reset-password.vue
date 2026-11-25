@@ -19,6 +19,8 @@ const showPassword = ref(false)
 const showConfirm = ref(false)
 
 const token = computed(() => route.query.token as string)
+// Links from the welcome email (new accounts) carry ?welcome=1
+const isWelcome = computed(() => route.query.welcome === '1')
 
 const confirmPasswordValidator = (value: string) => {
   return value === newPassword.value || 'Passwords do not match'
@@ -41,9 +43,11 @@ const handleReset = async () => {
     <VMain class="d-flex align-center justify-center" style="background: #F5F5F5; min-height: 100vh;">
       <VCard class="pa-8" width="440" elevation="2">
         <div class="text-center mb-6">
-          <VIcon size="48" color="primary" icon="mdi-lock-reset" />
-          <h1 class="text-h5 font-weight-bold mt-2">Reset Password</h1>
-          <p class="text-body-2 text-medium-emphasis">Enter your new password below.</p>
+          <VIcon size="48" color="primary" :icon="isWelcome ? 'mdi-account-key-outline' : 'mdi-lock-reset'" />
+          <h1 class="text-h5 font-weight-bold mt-2">{{ isWelcome ? 'Welcome to Stockly' : 'Reset Password' }}</h1>
+          <p class="text-body-2 text-medium-emphasis">
+            {{ isWelcome ? 'Choose a password for your new account.' : 'Enter your new password below.' }}
+          </p>
         </div>
 
         <VAlert v-if="!token" type="warning" class="mb-4">
@@ -90,7 +94,7 @@ const handleReset = async () => {
             size="large"
             :loading="authStore.loading"
           >
-            Reset Password
+            {{ isWelcome ? 'Set Password' : 'Reset Password' }}
           </VBtn>
         </VForm>
 
