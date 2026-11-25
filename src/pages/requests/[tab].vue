@@ -25,6 +25,8 @@ const userData = computed(() => {
 const group = computed(() => userData.value?.group_name)
 const userId = computed(() => String(userData.value?.id ?? ''))
 const canManage = computed(() => ['admin', 'operation', 'finance'].includes(group.value))
+// Final Approvers only see requests awaiting final approval (all of them, not just their own rules)
+const isApprover = computed(() => group.value === 'approver')
 
 // ─── GQL ───────────────────────────────────────────────────────────────
 const REQUEST_FIELDS = `
@@ -92,13 +94,13 @@ const allTotal = computed(() => allResult.value?.requestsPage?.total ?? 0)
 const manageStatusCounts = computed<{ status: string; count: number }[]>(() => allResult.value?.requestsPage?.statusCounts ?? [])
 
 // ─── My Requests tab ───────────────────────────────────────────────────
-const { result: myResult, loading: myLoading, refetch: refetchMine } = useQuery(MY_REQUESTS_QUERY)
+const { result: myResult, loading: myLoading, refetch: refetchMine } = useQuery(MY_REQUESTS_QUERY, {}, () => ({ enabled: !isApprover.value }))
 const myRequests = computed(() => myResult.value?.myRequests ?? [])
 
 // ─── Awaiting My Approval tab (final approver) ─────────────────────────
 const { result: awaitingResult, loading: awaitingLoading, refetch: refetchAwaiting } = useQuery(AWAITING_QUERY)
 const awaitingRequests = computed(() => awaitingResult.value?.requestsAwaitingMyApproval ?? [])
-const showAwaitingTab = computed(() => awaitingRequests.value.length > 0 || activeTab.value === 'awaiting')
+const showAwaitingTab = computed(() => isApprover.value || awaitingRequests.value.length > 0 || activeTab.value === 'awaiting')
 
 // ─── Form data ─────────────────────────────────────────────────────────
 const { result: itemsResult } = useQuery(ITEMS_QUERY)
@@ -191,7 +193,7 @@ const actionsFor = (req: any): ('forward' | 'approve' | 'reject' | 'purchase')[]
   const actions: ('forward' | 'approve' | 'reject' | 'purchase')[] = []
   if (req.status === 'pending' && ['admin', 'operation'].includes(g)) actions.push('forward', 'reject')
   if (req.status === 'forwarded' && ['admin', 'finance'].includes(g)) actions.push('approve', 'reject')
-  if (req.status === 'awaiting_final_approval' && (g === 'admin' || isFinalApprover)) actions.push('approve', 'reject')
+  if (req.status === 'awaiting_final_approval' && (['admin', 'approver'].includes(g) || isFinalApprover)) actions.push('approve', 'reject')
   if (req.status === 'approved' && ['admin', 'operation', 'finance'].includes(g)) actions.push('purchase')
   return actions
 }
@@ -401,11 +403,13 @@ const myHeaders = [
   { title: '', key: 'actions', sortable: false },
 ]
 
-const awaitingHeaders = [
+const awaitingHeaders = computed(() => [
   ...manageHeaders.filter(h => h.key !== 'status' && h.key !== 'actions'),
   { title: 'Finance Approval By', key: 'approver', sortable: false },
+  // Final Approvers see every awaiting request, so show who the approval rule assigned
+  ...(isApprover.value ? [{ title: 'Assigned To', key: 'finalApprover', sortable: false }] : []),
   { title: 'Actions', key: 'actions', sortable: false }
-]
+])
 </script>
 
 <template>
@@ -420,10 +424,10 @@ const awaitingHeaders = [
     <VTabs v-model="activeTab" class="mb-4">
       <VTab v-if="canManage" value="manage">Manage</VTab>
       <VTab v-if="showAwaitingTab" value="awaiting">
-        Awaiting My Approval
+        {{ isApprover ? 'Final Approvals' : 'Awaiting My Approval' }}
         <VChip v-if="awaitingRequests.length" size="x-small" color="deep-purple" class="ms-2">{{ awaitingRequests.length }}</VChip>
       </VTab>
-      <VTab value="mine">My Requests</VTab>
+      <VTab v-if="!isApprover" value="mine">My Requests</VTab>
     </VTabs>
 
     <VWindow v-model="activeTab">
@@ -514,7 +518,9 @@ const awaitingHeaders = [
       <!-- AWAITING MY APPROVAL TAB -->
       <VWindowItem value="awaiting">
         <VAlert type="info" variant="tonal" density="compact" class="mb-3">
-          These requests have been approved by finance and, based on their amount, need your final approval.
+          {{ isApprover
+            ? 'These requests have been approved by finance and, based on their amount, need a final approval. Any Final Approver can approve or reject them.'
+            : 'These requests have been approved by finance and, based on their amount, need your final approval.' }}
         </VAlert>
         <VCard>
           <VDataTable
@@ -543,6 +549,9 @@ const awaitingHeaders = [
             </template>
             <template #item.approver="{ item }">
               {{ item.approver ? `${item.approver.first_name} ${item.approver.last_name}` : '—' }}
+            </template>
+            <template #item.finalApprover="{ item }">
+              {{ item.finalApprover ? `${item.finalApprover.first_name} ${item.finalApprover.last_name}` : '—' }}
             </template>
             <template #item.actions="{ item }">
               <div class="d-flex ga-1" @click.stop>

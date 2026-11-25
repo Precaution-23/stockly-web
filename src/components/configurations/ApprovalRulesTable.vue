@@ -13,15 +13,19 @@ const CREATE_APPROVAL_RULE = gql`
   mutation createApprovalRule($payload: CreateApprovalRuleInput!) { createApprovalRule(payload: $payload) { ${RULE_FIELDS} } }
 `
 const DELETE_APPROVAL_RULE = gql`mutation deleteApprovalRule($id: ID!) { deleteApprovalRule(id: $id) }`
-const APPROVER_USERS_QUERY = gql`query users { users { id first_name last_name email is_active } }`
+const APPROVER_USERS_QUERY = gql`query users { users { id first_name last_name email is_active group_name } }`
 
 const { result: rulesResult, loading: rulesLoading, refetch: refetchRules } = useQuery(APPROVAL_RULES_QUERY)
 const rules = computed(() => rulesResult.value?.approvalRules ?? [])
 const { result: approverUsersResult } = useQuery(APPROVER_USERS_QUERY)
 const approverOptions = computed(() =>
   (approverUsersResult.value?.users ?? [])
-    .filter((u: any) => u.is_active)
-    .map((u: any) => ({ title: `${u.first_name} ${u.last_name} (${u.email})`, value: u.id })),
+    // Only Final Approvers and admins can be named (matches the API check)
+    .filter((u: any) => u.is_active && ['approver', 'admin'].includes(u.group_name))
+    .map((u: any) => ({
+      title: `${u.first_name} ${u.last_name} (${u.group_name === 'admin' ? 'Admin' : 'Final Approver'})`,
+      value: u.id,
+    })),
 )
 
 type RuleForm = { id?: string; min_amount: number | null; max_amount: number | null; approver_id: string | null; is_active: boolean }

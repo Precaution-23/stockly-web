@@ -92,6 +92,7 @@ const groupOptions = [
   { title: 'Operation', value: 'operation' },
   { title: 'Finance', value: 'finance' },
   { title: 'Requester', value: 'requester' },
+  { title: 'Final Approver', value: 'approver' },
 ]
 const roleOptions = computed(() => roles.value.map((r: any) => ({ title: r.name, value: r.id })))
 
@@ -239,7 +240,7 @@ async function savePermissions() {
             {{ item.first_name }} {{ item.last_name }}
           </template>
           <template #item.group_name="{ item }">
-            <VChip size="x-small" variant="tonal" color="primary" class="text-capitalize">{{ item.group_name }}</VChip>
+            <VChip size="x-small" variant="tonal" color="primary" class="text-capitalize">{{ groupOptions.find(g => g.value === item.group_name)?.title ?? item.group_name }}</VChip>
           </template>
           <template #item.role="{ item }">
             <span class="text-medium-emphasis">{{ item.role?.name ?? '—' }}</span>
