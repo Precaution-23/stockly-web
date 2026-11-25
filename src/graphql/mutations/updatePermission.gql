@@ -1,0 +1,10 @@
+mutation updatePermission($payload: UpdatePermissionInput!) {
+  updatePermission(payload: $payload) {
+    id
+    resource
+    create
+    read
+    update
+    delete
+  }
+}

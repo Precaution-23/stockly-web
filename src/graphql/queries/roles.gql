@@ -1,0 +1,16 @@
+query roles {
+  roles {
+    id
+    name
+    description
+    permissions {
+      id
+      resource
+      create
+      read
+      update
+      delete
+    }
+    createdAt
+  }
+}

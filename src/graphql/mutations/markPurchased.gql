@@ -1,0 +1,5 @@
+mutation markPurchased($id: ID!) {
+  markPurchased(id: $id) {
+    ...RequestFragment
+  }
+}

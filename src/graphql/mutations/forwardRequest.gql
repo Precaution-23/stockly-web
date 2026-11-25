@@ -1,0 +1,5 @@
+mutation forwardRequest($id: ID!) {
+  forwardRequest(id: $id) {
+    ...RequestFragment
+  }
+}

@@ -1,0 +1,5 @@
+mutation rejectRequest($payload: RejectRequestInput!) {
+  rejectRequest(payload: $payload) {
+    ...RequestFragment
+  }
+}

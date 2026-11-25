@@ -1,0 +1,5 @@
+query users($payload: UsersQueryInput) {
+  users(payload: $payload) {
+    ...UserFragment
+  }
+}

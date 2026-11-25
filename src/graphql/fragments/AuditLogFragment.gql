@@ -1,0 +1,14 @@
+fragment AuditLogFragment on AuditLog {
+  id
+  action_type
+  model
+  model_id
+  diff
+  createdAt
+  user {
+    id
+    first_name
+    last_name
+    email
+  }
+}

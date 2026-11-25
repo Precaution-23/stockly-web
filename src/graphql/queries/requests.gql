@@ -1,0 +1,5 @@
+query requests($payload: RequestsQueryInput) {
+  requests(payload: $payload) {
+    ...RequestFragment
+  }
+}

@@ -1,0 +1,22 @@
+fragment UserFragment on User {
+  id
+  first_name
+  last_name
+  email
+  group_name
+  is_active
+  createdAt
+  role {
+    id
+    name
+    description
+  }
+  permissions {
+    id
+    resource
+    create
+    read
+    update
+    delete
+  }
+}

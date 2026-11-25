@@ -1,0 +1,5 @@
+mutation createRequest($payload: CreateRequestInput!) {
+  createRequest(payload: $payload) {
+    ...RequestFragment
+  }
+}

@@ -1,0 +1,15 @@
+query dashboardStats {
+  dashboardStats {
+    totalRequests
+    pendingRequests
+    forwardedRequests
+    approvedRequests
+    rejectedRequests
+    purchasedRequests
+    totalInventoryItems
+    totalInventoryValue
+    recentActivity {
+      ...AuditLogFragment
+    }
+  }
+}

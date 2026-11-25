@@ -1,0 +1,5 @@
+query auditLogs($payload: AuditLogsQueryInput) {
+  auditLogs(payload: $payload) {
+    ...AuditLogFragment
+  }
+}

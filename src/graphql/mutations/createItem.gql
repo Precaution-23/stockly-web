@@ -1,0 +1,8 @@
+mutation createItem($payload: CreateItemInput!) {
+  createItem(payload: $payload) {
+    id
+    name
+    description
+    createdAt
+  }
+}

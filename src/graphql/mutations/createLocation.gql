@@ -1,0 +1,9 @@
+mutation createLocation($payload: CreateLocationInput!) {
+  createLocation(payload: $payload) {
+    id
+    name
+    parent_id
+    parent_location { id name }
+    createdAt
+  }
+}

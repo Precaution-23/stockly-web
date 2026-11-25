@@ -1,0 +1,8 @@
+query items($payload: ItemsQueryInput) {
+  items(payload: $payload) {
+    id
+    name
+    description
+    createdAt
+  }
+}

@@ -1,0 +1,27 @@
+fragment RequestFragment on Request {
+  id
+  item_id
+  item_name
+  quantity
+  unit_price
+  total_price
+  needed_by_date
+  vendor_id
+  location_id
+  description
+  invoice_1
+  invoice_2
+  invoice_3
+  status
+  rejection_note
+  purchased_at
+  createdAt
+  updatedAt
+  item { id name }
+  vendor { id name }
+  location { id name parent_location { id name } }
+  creator { id first_name last_name email }
+  reviewer { id first_name last_name email }
+  approver { id first_name last_name email }
+  purchaser { id first_name last_name email }
+}

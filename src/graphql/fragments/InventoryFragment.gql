@@ -1,0 +1,17 @@
+fragment InventoryFragment on Inventory {
+  id
+  item_id
+  item_name
+  quantity
+  unit_price
+  total_price
+  vendor_id
+  location_id
+  purchased_by
+  purchased_at
+  createdAt
+  item { id name }
+  vendor { id name }
+  location { id name }
+  purchaser { id first_name last_name }
+}

@@ -1,0 +1,262 @@
+scalar Date
+
+type Auth {
+  token: String!
+  user: User!
+}
+
+type Permission {
+  id: ID!
+  role_id: ID
+  resource: String!
+  create: Boolean
+  read: Boolean
+  update: Boolean
+  delete: Boolean
+}
+
+type Role {
+  id: ID!
+  name: String!
+  description: String
+  permissions: [Permission]
+  createdAt: Date
+  updatedAt: Date
+}
+
+type User {
+  id: ID!
+  first_name: String!
+  last_name: String!
+  email: String!
+  group_name: String
+  is_active: Boolean
+  role: Role
+  permissions: [Permission]
+  createdAt: Date
+  updatedAt: Date
+}
+
+type Item {
+  id: ID!
+  name: String!
+  description: String
+  createdAt: Date
+  updatedAt: Date
+}
+
+type Location {
+  id: ID!
+  name: String!
+  parent_id: ID
+  parent_location: Location
+  createdAt: Date
+  updatedAt: Date
+}
+
+type Vendor {
+  id: ID!
+  name: String!
+  description: String
+  createdAt: Date
+  updatedAt: Date
+}
+
+type Request {
+  id: ID!
+  item_id: ID
+  item_name: String!
+  quantity: Int!
+  unit_price: Float!
+  total_price: Float
+  needed_by_date: Date
+  vendor_id: ID
+  location_id: ID
+  description: String
+  invoice_1: String
+  invoice_2: String
+  invoice_3: String
+  status: String!
+  rejection_note: String
+  purchased_at: Date
+  createdAt: Date
+  updatedAt: Date
+  item: Item
+  vendor: Vendor
+  location: Location
+  creator: User
+  reviewer: User
+  approver: User
+  purchaser: User
+}
+
+type Inventory {
+  id: ID!
+  request_id: ID
+  item_id: ID
+  item_name: String!
+  quantity: Int!
+  unit_price: Float!
+  total_price: Float!
+  vendor_id: ID
+  location_id: ID
+  purchased_by: ID
+  purchased_at: Date
+  createdAt: Date
+  updatedAt: Date
+  item: Item
+  vendor: Vendor
+  location: Location
+  purchaser: User
+}
+
+type AuditLog {
+  id: ID!
+  user_id: ID
+  action_type: String!
+  model: String!
+  model_id: ID
+  diff: String
+  createdAt: Date
+  user: User
+}
+
+type DashboardStats {
+  totalRequests: Int
+  pendingRequests: Int
+  forwardedRequests: Int
+  approvedRequests: Int
+  rejectedRequests: Int
+  purchasedRequests: Int
+  totalInventoryItems: Int
+  totalInventoryValue: Float
+  recentActivity: [AuditLog]
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input UsersQueryInput {
+  q: String
+}
+
+input ItemsQueryInput {
+  q: String
+}
+
+input LocationsQueryInput {
+  q: String
+}
+
+input VendorsQueryInput {
+  q: String
+}
+
+input RequestsQueryInput {
+  q: String
+  status: String
+}
+
+input AuditLogsQueryInput {
+  model: String
+  action_type: String
+}
+
+input CreateUserInput {
+  id: ID
+  first_name: String!
+  last_name: String!
+  email: String!
+  password: String
+  group_name: String!
+  role_id: ID
+  is_active: Boolean
+}
+
+input CreateRoleInput {
+  id: ID
+  name: String!
+  description: String
+}
+
+input UpdatePermissionInput {
+  id: ID!
+  create: Boolean!
+  read: Boolean!
+  update: Boolean!
+  delete: Boolean!
+}
+
+input CreateItemInput {
+  id: ID
+  name: String!
+  description: String
+}
+
+input CreateLocationInput {
+  id: ID
+  name: String!
+  parent_id: ID
+}
+
+input CreateVendorInput {
+  id: ID
+  name: String!
+  description: String
+}
+
+input CreateRequestInput {
+  item_id: ID
+  item_name: String!
+  quantity: Int!
+  unit_price: Float!
+  needed_by_date: String!
+  vendor_id: ID
+  location_id: ID
+  description: String
+  invoice_1: String
+  invoice_2: String
+  invoice_3: String
+}
+
+input RejectRequestInput {
+  id: ID!
+  rejection_note: String
+}
+
+type Query {
+  login(payload: LoginInput!): Auth
+  me: User
+  users(payload: UsersQueryInput): [User]
+  roles: [Role]
+  items(payload: ItemsQueryInput): [Item]
+  locations(payload: LocationsQueryInput): [Location]
+  vendors(payload: VendorsQueryInput): [Vendor]
+  requests(payload: RequestsQueryInput): [Request]
+  myRequests: [Request]
+  inventory: [Inventory]
+  auditLogs(payload: AuditLogsQueryInput): [AuditLog]
+  dashboardStats: DashboardStats
+}
+
+type Mutation {
+  createUser(payload: CreateUserInput!): User
+  deleteUser(id: ID!): Boolean
+  createRole(payload: CreateRoleInput!): Role
+  deleteRole(id: ID!): Boolean
+  updatePermission(payload: UpdatePermissionInput!): Permission
+  createItem(payload: CreateItemInput!): Item
+  deleteItem(id: ID!): Boolean
+  createLocation(payload: CreateLocationInput!): Location
+  deleteLocation(id: ID!): Boolean
+  createVendor(payload: CreateVendorInput!): Vendor
+  deleteVendor(id: ID!): Boolean
+  createRequest(payload: CreateRequestInput!): Request
+  forwardRequest(id: ID!): Request
+  approveRequest(id: ID!): Request
+  rejectRequest(payload: RejectRequestInput!): Request
+  markPurchased(id: ID!): Request
+  deleteRequest(id: ID!): Boolean
+}

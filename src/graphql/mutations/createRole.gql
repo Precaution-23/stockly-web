@@ -1,0 +1,8 @@
+mutation createRole($payload: CreateRoleInput!) {
+  createRole(payload: $payload) {
+    id
+    name
+    description
+    permissions { id resource create read update delete }
+  }
+}

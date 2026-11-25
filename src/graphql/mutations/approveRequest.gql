@@ -1,0 +1,5 @@
+mutation approveRequest($id: ID!) {
+  approveRequest(id: $id) {
+    ...RequestFragment
+  }
+}
