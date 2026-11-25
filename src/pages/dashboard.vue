@@ -7,33 +7,61 @@ import RefreshButton from '@/components/RefreshButton.vue'
 const DASHBOARD_STATS = gql`
   query dashboardStats {
     dashboardStats {
+      scope
       totalRequests pendingRequests forwardedRequests awaitingFinalApprovalRequests approvedRequests
       rejectedRequests purchasedRequests totalInventoryItems totalInventoryValue
       recentActivity {
         id action_type model model_id record_name createdAt
         user { id first_name last_name }
       }
+      recentRequests { id item_name quantity total_price status createdAt }
     }
   }
 `
 
 const { result, loading } = useQuery(DASHBOARD_STATS)
-// Recent activity is audit-log data; the API returns it only to roles with AuditLogs read
-const { can } = useAbility()
-const canSeeActivity = computed(() => can('read', 'AuditLogs'))
 const stats = computed(() => result.value?.dashboardStats)
 
-const statCards = computed(() => [
-  { label: 'Total Requests', value: stats.value?.totalRequests ?? 0, icon: 'mdi-file-document-outline', color: 'primary' },
-  { label: 'Pending', value: stats.value?.pendingRequests ?? 0, icon: 'mdi-clock-outline', color: 'warning' },
-  { label: 'Forwarded', value: stats.value?.forwardedRequests ?? 0, icon: 'mdi-arrow-right-circle-outline', color: 'info' },
-  { label: 'Awaiting Final Approval', value: stats.value?.awaitingFinalApprovalRequests ?? 0, icon: 'mdi-account-clock-outline', color: 'deep-purple' },
-  { label: 'Approved', value: stats.value?.approvedRequests ?? 0, icon: 'mdi-check-circle-outline', color: 'success' },
-  { label: 'Rejected', value: stats.value?.rejectedRequests ?? 0, icon: 'mdi-close-circle-outline', color: 'error' },
-  { label: 'Purchased', value: stats.value?.purchasedRequests ?? 0, icon: 'mdi-shopping-outline', color: 'secondary' },
-  { label: 'Inventory Items', value: stats.value?.totalInventoryItems ?? 0, icon: 'mdi-warehouse', color: 'primary' },
-  { label: 'Inventory Value (GHS)', value: Number(stats.value?.totalInventoryValue ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 }), icon: 'mdi-cash-multiple', color: 'success' }
-])
+// Admin/Operation/Finance see church-wide figures; everyone else sees their own requests
+const isPersonal = computed(() => stats.value?.scope === 'mine')
+// The API sends these only to roles allowed to see them (null otherwise)
+const { can } = useAbility()
+const canSeeActivity = computed(() => can('read', 'AuditLogs'))
+const hasInventory = computed(() => stats.value?.totalInventoryItems != null)
+
+const statCards = computed(() => {
+  const s = stats.value
+  const cards = [
+    { label: isPersonal.value ? 'My Requests' : 'Total Requests', value: s?.totalRequests ?? 0, icon: 'mdi-file-document-outline', color: 'primary' },
+    { label: 'Pending', value: s?.pendingRequests ?? 0, icon: 'mdi-clock-outline', color: 'warning' },
+    { label: 'Forwarded', value: s?.forwardedRequests ?? 0, icon: 'mdi-arrow-right-circle-outline', color: 'info' },
+    { label: 'Awaiting Final Approval', value: s?.awaitingFinalApprovalRequests ?? 0, icon: 'mdi-account-clock-outline', color: 'deep-purple' },
+    { label: 'Approved', value: s?.approvedRequests ?? 0, icon: 'mdi-check-circle-outline', color: 'success' },
+    { label: 'Rejected', value: s?.rejectedRequests ?? 0, icon: 'mdi-close-circle-outline', color: 'error' },
+    { label: 'Purchased', value: s?.purchasedRequests ?? 0, icon: 'mdi-shopping-outline', color: 'secondary' },
+  ]
+  if (hasInventory.value) {
+    cards.push(
+      { label: 'Inventory Items', value: s?.totalInventoryItems ?? 0, icon: 'mdi-warehouse', color: 'primary' },
+      { label: 'Inventory Value (GHS)', value: Number(s?.totalInventoryValue ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 }), icon: 'mdi-cash-multiple', color: 'success' },
+    )
+  }
+  return cards
+})
+
+const statusColor = (status: string) => ({
+  pending: 'warning', forwarded: 'info', awaiting_final_approval: 'deep-purple', approved: 'success',
+  rejected: 'error', purchased: 'primary',
+}[status] || 'default')
+const statusLabel = (status: string) => (status === 'awaiting_final_approval' ? 'Awaiting final approval' : status)
+
+const requestHeaders = [
+  { title: 'Item', key: 'item_name', sortable: false },
+  { title: 'Qty', key: 'quantity', sortable: false },
+  { title: 'Total (GHS)', key: 'total_price', sortable: false },
+  { title: 'Status', key: 'status', sortable: false },
+  { title: 'Requested', key: 'createdAt', sortable: false },
+]
 
 const auditHeaders = [
   { title: 'User', key: 'user', sortable: false },
@@ -46,7 +74,12 @@ const auditHeaders = [
 <template>
   <div>
     <div class="d-flex align-center justify-space-between mb-6">
-      <h2 class="text-h5 font-weight-bold">Dashboard</h2>
+      <div>
+        <h2 class="text-h5 font-weight-bold">Dashboard</h2>
+        <div v-if="stats" class="text-body-2 text-medium-emphasis">
+          {{ isPersonal ? 'Showing your own requests' : 'Showing all church requests' }}
+        </div>
+      </div>
       <RefreshButton />
     </div>
 
@@ -68,6 +101,32 @@ const auditHeaders = [
         </VCard>
       </VCol>
     </VRow>
+
+    <!-- My Recent Requests (personal dashboard) -->
+    <VCard v-if="isPersonal" class="mb-6">
+      <VCardTitle class="pa-4 pb-2 d-flex align-center justify-space-between">
+        <span>My Recent Requests</span>
+        <VBtn variant="text" size="small" append-icon="mdi-arrow-right" to="/requests/mine">View all</VBtn>
+      </VCardTitle>
+      <VDivider />
+      <VDataTable
+        :headers="requestHeaders"
+        :items="stats?.recentRequests ?? []"
+        :loading="loading"
+        :items-per-page="-1"
+        hide-default-footer
+        class="text-no-wrap"
+      >
+        <template #item.total_price="{ item }">{{ Number(item.total_price).toFixed(2) }}</template>
+        <template #item.status="{ item }">
+          <VChip :color="statusColor(item.status)" size="small" variant="tonal" class="text-capitalize">{{ statusLabel(item.status) }}</VChip>
+        </template>
+        <template #item.createdAt="{ item }">{{ new Date(item.createdAt).toLocaleDateString() }}</template>
+        <template #no-data>
+          <div class="pa-4 text-medium-emphasis">You haven't made any requests yet.</div>
+        </template>
+      </VDataTable>
+    </VCard>
 
     <!-- Recent Activity -->
     <VCard v-if="canSeeActivity">
